@@ -1,0 +1,12 @@
+{
+  "name": "stock-prediction-lstm",
+  "version": "1.0.0",
+  "description": "Stock Market Prediction using LSTM Neural Networks",
+  "scripts": {
+    "start": "streamlit run app.py --server.headless true --server.enableCORS false --server.enableXsrfProtection false --server.port $PORT",
+    "dev": "streamlit run app.py"
+  },
+  "keywords": ["stock", "prediction", "lstm", "machine-learning"],
+  "author": "",
+  "license": "MIT"
+}
