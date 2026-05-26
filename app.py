@@ -17,7 +17,7 @@ st.markdown("""
     h1 { color: #ffbc00 !important; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
     h3 { color: #a3e635 !important; }
     </style>
-""", unsafe-allow_html=True)
+""", unsafe_allow_html=True)
 
 # App Front Page Title & Hero Section
 st.markdown("# 👑 STOCK LEGENDS")
