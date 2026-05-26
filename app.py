@@ -1,104 +1,153 @@
 import streamlit as st
-import yfinance as yf
-import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
+import pandas as pd
+import matplotlib.pyplot as plt
+import yfinance as yf
 
-# Page Setup
-st.set_page_config(page_title="Stock Legends AI", page_icon="👑", layout="wide")
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM
+from sklearn.preprocessing import MinMaxScaler
 
-# Custom CSS for dark-themed financial UI
-st.markdown("""
-    <style>
-    .main { background-color: #0b0f19; color: #ffffff; }
-    .stMetric { background-color: #111827; border-radius: 10px; padding: 15px; border: 1px solid #1f2937; }
-    div[data-testid="stMetricValue"] { color: #00ffcc !important; font-family: 'Courier New', monospace; }
-    h1 { color: #ffbc00 !important; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-    h3 { color: #a3e635 !important; }
-    </style>
-""", unsafe_allow_html=True)
+st.title("📈 Stock Market Trend Prediction Using LSTM")
 
-# App Front Page Title & Hero Section
-st.markdown("# 👑 STOCK LEGENDS")
-st.markdown("### *AI-Powered Market Prediction Engine*")
-st.markdown("> *Unlocking financial time-series patterns using advanced LSTM Recurrent Neural Networks.*")
-st.write("---")
+stock = st.text_input(
+    "Enter Stock Symbol",
+    "AAPL"
+)
 
-# Sidebar settings
-st.sidebar.header("🕹️ Control Panel")
-ticker = st.sidebar.text_input("Stock Ticker Symbol", value="AAPL").upper()
-lookback_days = st.sidebar.slider("LSTM Memory Lookback (Days)", min_value=10, max_value=90, value=60)
-forecast_horizon = st.sidebar.slider("Prediction Horizon (Days Forward)", min_value=1, max_value=7, value=1)
+start = "2015-01-01"
+end = "2026-01-01"
 
-@st.cache_data(ttl=600)
-def fetch_stock_data(symbol):
-    try:
-        # Pull 3 years of data to support deep lookbacks
-        data = yf.download(symbol, period="3y")
-        if data.empty:
-            return None
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
-        return data
-    except Exception:
-        return None
+data = yf.download(stock,start,end)
 
-df = fetch_stock_data(ticker)
+if len(data) == 0:
+    st.error("Invalid stock symbol")
+    st.stop()
 
-if df is not None:
-    # Feature Engineering (Math Transformations for LSTM Layers)
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    
-    # Calculate RSI (Relative Strength Index)
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / (loss + 1e-9)
-    df['RSI_14'] = 100 - (100 / (1 + rs))
-    df = df.dropna()
+st.subheader("Stock Data")
+st.write(data.tail())
 
-    # Extract Latest Sequential Vector
-    latest_close = float(df['Close'].iloc[-1])
-    latest_sma = float(df['SMA_20'].iloc[-1])
-    latest_rsi = float(df['RSI_14'].iloc[-1])
-    
-    # Mathematical LSTM Simulation Framework
-    # Scales parameters, injects localized historical volatility weights, and predicts sequential trend
-    np.random.seed(42) 
-    recent_volatility = float(df['Close'].pct_change().tail(lookback_days).std())
-    trend_bias = 0.0005 if latest_close > latest_sma else -0.0005
-    
-    # Compute simulated hidden cell state output
-    predicted_change = np.tanh(trend_bias + (recent_volatility * np.random.normal(0, 1)))
-    predicted_price = latest_close * (1 + (predicted_change * forecast_horizon))
-    
-    # Metric Layout Blocks
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Current Close Price", f"${latest_close:.2f}")
-    col2.metric(f"LSTM Forecast ({forecast_horizon}D)", f"${predicted_price:.2f}")
-    
-    # Direction validation
-    direction = "🟢 BULLISH" if predicted_price > latest_close else "🔴 BEARISH"
-    col3.metric("Neural Network Signal", direction)
-    
-    st.write("---")
-    
-    # Interactive Graph Architecture
-    st.subheader("📊 Stock Legends Analytics Interface")
-    fig = go.Figure()
-    
-    # Historical path
-    fig.add_trace(go.Scatter(x=df.index[-200:], y=df['Close'].iloc[-200:], name='Historical Path', line=dict(color='#3b82f6', width=2.5)))
-    fig.add_trace(go.Scatter(x=df.index[-200:], y=df['SMA_20'].iloc[-200:], name='SMA (20 Days)', line=dict(color='#f59e0b', width=1.5, dash='dash')))
-    
-    # Future prediction vector plotting
-    future_dates = [df.index[-1] + timedelta(days=i) for i in range(1, forecast_horizon + 1)]
-    future_prices = np.linspace(latest_close, predicted_price, forecast_horizon)
-    fig.add_trace(go.Scatter(x=future_dates, y=future_prices, name='LSTM Future Projection Line', line=dict(color='#10b981', width=3)))
-    
-    fig.update_layout(template="plotly_dark", background_color="#111827", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig, use_container_width=True)
-    
-else:
-    st.error("❌ Ticker validation failed. Please check your asset symbol configuration (e.g., TSLA, NVDA, AAPL, AMZN).")
+close_price = data[['Close']]
+
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled = scaler.fit_transform(close_price)
+
+train_size = int(len(scaled)*0.8)
+
+train = scaled[:train_size]
+test = scaled[train_size:]
+
+X_train=[]
+Y_train=[]
+
+for i in range(60,len(train)):
+    X_train.append(train[i-60:i,0])
+    Y_train.append(train[i,0])
+
+X_train=np.array(X_train)
+Y_train=np.array(Y_train)
+
+X_train=np.reshape(
+    X_train,
+    (X_train.shape[0],
+     X_train.shape[1],
+     1)
+)
+
+model=Sequential()
+
+model.add(
+    LSTM(
+        50,
+        return_sequences=True,
+        input_shape=(60,1)
+    )
+)
+
+model.add(
+    LSTM(50)
+)
+
+model.add(Dense(25))
+model.add(Dense(1))
+
+model.compile(
+    optimizer='adam',
+    loss='mean_squared_error'
+)
+
+st.write("Training Model...")
+
+model.fit(
+    X_train,
+    Y_train,
+    epochs=5,
+    batch_size=32,
+    verbose=0
+)
+
+inputs=scaled[
+    train_size-60:
+]
+
+X_test=[]
+
+for i in range(60,len(inputs)):
+    X_test.append(
+        inputs[i-60:i,0]
+    )
+
+X_test=np.array(X_test)
+
+X_test=np.reshape(
+    X_test,
+    (X_test.shape[0],
+     X_test.shape[1],
+     1)
+)
+
+pred=model.predict(X_test)
+
+pred=scaler.inverse_transform(pred)
+
+actual=close_price[
+    train_size:
+]
+
+st.subheader(
+    "Actual vs Predicted"
+)
+
+fig=plt.figure(figsize=(10,5))
+
+plt.plot(
+    actual.values,
+    label="Actual"
+)
+
+plt.plot(
+    pred,
+    label="Predicted"
+)
+
+plt.legend()
+
+st.pyplot(fig)
+
+last_60=scaled[-60:]
+
+future=np.array(
+    last_60
+).reshape(1,60,1)
+
+next_day=model.predict(
+    future
+)
+
+price=scaler.inverse_transform(
+    next_day
+)
+
+st.success(
+    f"Predicted Next Day Price: ${price[0][0]:.2f}"
+)
